@@ -1,0 +1,6 @@
+@Fast_Down_HostAddress = http://localhost:5224
+
+GET {{Fast_Down_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
