@@ -1,4 +1,6 @@
 using FastDown.Core;
+using FastDown.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -10,6 +12,14 @@ builder.Services.Scan(scan =>
         .AddClasses(classes => classes.AssignableTo(typeof(IHandler<,>)))
         .AsImplementedInterfaces()
         .WithScopedLifetime()
+);
+
+// Add DbContext
+builder.Services.AddDbContext<FDContext>(options =>
+    options.UseSqlServer(
+        builder.Configuration.GetConnectionString("DefaultConnection"),
+        b => b.MigrationsAssembly(typeof(FDContext).Assembly.FullName)
+    )
 );
 
 builder.Services.AddControllers();
