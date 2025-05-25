@@ -49,7 +49,11 @@ namespace FastDown.Worker
 
             _queueName = _channel.QueueDeclare().QueueName;
 
-            _channel.QueueBind(queue: _queueName, exchange: rabbitSettings.ExchangeName, routingKey: "");
+            _channel.QueueBind(
+                queue: _queueName,
+                exchange: rabbitSettings.ExchangeName,
+                routingKey: ""
+            );
         }
 
         protected override Task ExecuteAsync(CancellationToken stoppingToken)
@@ -107,6 +111,14 @@ namespace FastDown.Worker
                     await ProcessDownloadTaskStatusChangedEvent(@event, repository);
                 }
             }
+            else if (routingKey == nameof(DownloadTaskProgressEvent))
+            {
+                var @event = JsonSerializer.Deserialize<DownloadTaskProgressEvent>(message);
+                if (@event != null)
+                {
+                    await ProcessDownloadTaskProgressEvent(@event, repository);
+                }
+            }
         }
 
         private async Task ProcessDownloadTaskCreatedEvent(
@@ -145,6 +157,30 @@ namespace FastDown.Worker
             }
         }
 
+        private async Task ProcessDownloadTaskProgressEvent(
+            DownloadTaskProgressEvent @event,
+            DownloadTaskReadRepository repository
+        )
+        {
+            var readModel = await repository.GetByIdAsync(@event.Id);
+            if (readModel != null)
+            {
+                // Update progress information
+                readModel.BytesDownloaded = @event.BytesDownloaded;
+                readModel.TotalBytes = @event.TotalBytes;
+                readModel.ProgressPercentage = @event.ProgressPercentage;
+                readModel.LastProgressUpdate = @event.Timestamp;
+
+                await repository.UpsertAsync(readModel);
+
+                _logger.LogInformation(
+                    "Updated progress for download task: {Id} to {Progress}%",
+                    @event.Id,
+                    @event.ProgressPercentage
+                );
+            }
+        }
+
         public override void Dispose()
         {
             _channel?.Close();
@@ -153,4 +189,3 @@ namespace FastDown.Worker
         }
     }
 }
-

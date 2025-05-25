@@ -2,6 +2,10 @@
 bin/
 obj/
 
+# Downloads folder
+Downloads/
+**/Downloads/
+
 # Visual Studio files
 .vs/
 *.user

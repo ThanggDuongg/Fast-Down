@@ -14,6 +14,13 @@ namespace FastDown.Domain.ReadModels
         public string FileName { get; set; } = string.Empty;
         public string Status { get; set; } = string.Empty;
         public DateTime CreatedAt { get; set; }
+        
+        // New fields for progress tracking
+        public long BytesDownloaded { get; set; }
+        public long TotalBytes { get; set; }
+        public int ProgressPercentage { get; set; }
+        public DateTime? LastProgressUpdate { get; set; }
     }
 }
+
 
