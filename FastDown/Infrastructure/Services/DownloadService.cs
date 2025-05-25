@@ -5,45 +5,32 @@ using Microsoft.EntityFrameworkCore;
 
 namespace FastDown.Infrastructure.Services
 {
-    public class DownloadService
+    public class DownloadService(
+        HttpClient httpClient,
+        FDContext context,
+        IEventPublisher eventPublisher,
+        ILogger<DownloadService> logger
+    )
     {
-        private readonly HttpClient _httpClient;
-        private readonly FDContext _context;
-        private readonly IEventPublisher _eventPublisher;
-        private readonly ILogger<DownloadService> _logger;
-
-        public DownloadService(
-            HttpClient httpClient,
-            FDContext context,
-            IEventPublisher eventPublisher,
-            ILogger<DownloadService> logger
-        )
-        {
-            _httpClient = httpClient;
-            _context = context;
-            _eventPublisher = eventPublisher;
-            _logger = logger;
-        }
-
         public async Task<bool> DownloadFileAsync(
             int downloadTaskId,
             CancellationToken cancellationToken = default
         )
         {
-            var downloadTask = await _context.DownloadTasks.FirstOrDefaultAsync(
+            var downloadTask = await context.DownloadTasks.FirstOrDefaultAsync(
                 x => x.Id == downloadTaskId,
                 cancellationToken
             );
 
             if (downloadTask == null)
             {
-                _logger.LogWarning("Download task with ID {Id} not found", downloadTaskId);
+                logger.LogWarning("Download task with ID {Id} not found", downloadTaskId);
                 return false;
             }
 
             try
             {
-                var response = await _httpClient.GetAsync(downloadTask.Url, cancellationToken);
+                var response = await httpClient.GetAsync(downloadTask.Url, cancellationToken);
                 response.EnsureSuccessStatusCode();
 
                 var downloadsPath = Path.Combine(Directory.GetCurrentDirectory(), "Downloads");
@@ -65,11 +52,10 @@ namespace FastDown.Infrastructure.Services
                     await response.Content.CopyToAsync(fileStream, cancellationToken);
                 }
 
-                var oldStatus = downloadTask.Status;
                 downloadTask.Status = "Completed";
-                await _context.SaveChangesAsync(cancellationToken);
+                await context.SaveChangesAsync(cancellationToken);
 
-                await _eventPublisher.PublishAsync(
+                await eventPublisher.PublishAsync(
                     new DownloadTaskStatusChangedEvent
                     {
                         Id = downloadTask.Id,
@@ -78,7 +64,7 @@ namespace FastDown.Infrastructure.Services
                     cancellationToken
                 );
 
-                _logger.LogInformation(
+                logger.LogInformation(
                     "File downloaded successfully: {FileName}",
                     downloadTask.FileName
                 );
@@ -86,14 +72,13 @@ namespace FastDown.Infrastructure.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error downloading file from {Url}", downloadTask.Url);
+                logger.LogError(ex, "Error downloading file from {Url}", downloadTask.Url);
 
-                var oldStatus = downloadTask.Status;
                 downloadTask.Status = "Failed";
-                await _context.SaveChangesAsync(cancellationToken);
+                await context.SaveChangesAsync(cancellationToken);
 
                 // Publish status changed event
-                await _eventPublisher.PublishAsync(
+                await eventPublisher.PublishAsync(
                     new DownloadTaskStatusChangedEvent
                     {
                         Id = downloadTask.Id,
