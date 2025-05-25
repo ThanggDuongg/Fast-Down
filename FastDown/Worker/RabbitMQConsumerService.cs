@@ -14,7 +14,6 @@ namespace FastDown.Worker
     {
         private readonly IConnection _connection;
         private readonly IModel _channel;
-        private readonly RabbitMQSettings _settings;
         private readonly IServiceProvider _serviceProvider;
         private readonly ILogger<RabbitMQConsumerService> _logger;
         private readonly string _queueName;
@@ -25,23 +24,24 @@ namespace FastDown.Worker
             ILogger<RabbitMQConsumerService> logger
         )
         {
-            _settings = settings.Value;
             _serviceProvider = serviceProvider;
             _logger = logger;
 
+            var rabbitSettings = settings.Value;
+
             var factory = new ConnectionFactory
             {
-                HostName = _settings.HostName,
-                UserName = _settings.UserName,
-                Password = _settings.Password,
-                Port = _settings.Port,
+                HostName = rabbitSettings.HostName,
+                UserName = rabbitSettings.UserName,
+                Password = rabbitSettings.Password,
+                Port = rabbitSettings.Port,
             };
 
             _connection = factory.CreateConnection();
             _channel = _connection.CreateModel();
 
             _channel.ExchangeDeclare(
-                exchange: _settings.ExchangeName,
+                exchange: rabbitSettings.ExchangeName,
                 type: ExchangeType.Fanout,
                 durable: true,
                 autoDelete: false
@@ -49,7 +49,7 @@ namespace FastDown.Worker
 
             _queueName = _channel.QueueDeclare().QueueName;
 
-            _channel.QueueBind(queue: _queueName, exchange: _settings.ExchangeName, routingKey: "");
+            _channel.QueueBind(queue: _queueName, exchange: rabbitSettings.ExchangeName, routingKey: "");
         }
 
         protected override Task ExecuteAsync(CancellationToken stoppingToken)
@@ -88,28 +88,23 @@ namespace FastDown.Worker
             );
 
             // Create a scope to resolve scoped services
-            using (var scope = _serviceProvider.CreateScope())
-            {
-                var repository =
-                    scope.ServiceProvider.GetRequiredService<DownloadTaskReadRepository>();
+            using var scope = _serviceProvider.CreateScope();
+            var repository = scope.ServiceProvider.GetRequiredService<DownloadTaskReadRepository>();
 
-                if (routingKey == nameof(DownloadTaskCreatedEvent))
+            if (routingKey == nameof(DownloadTaskCreatedEvent))
+            {
+                var @event = JsonSerializer.Deserialize<DownloadTaskCreatedEvent>(message);
+                if (@event != null)
                 {
-                    var @event = JsonSerializer.Deserialize<DownloadTaskCreatedEvent>(message);
-                    if (@event != null)
-                    {
-                        await ProcessDownloadTaskCreatedEvent(@event, repository);
-                    }
+                    await ProcessDownloadTaskCreatedEvent(@event, repository);
                 }
-                else if (routingKey == nameof(DownloadTaskStatusChangedEvent))
+            }
+            else if (routingKey == nameof(DownloadTaskStatusChangedEvent))
+            {
+                var @event = JsonSerializer.Deserialize<DownloadTaskStatusChangedEvent>(message);
+                if (@event != null)
                 {
-                    var @event = JsonSerializer.Deserialize<DownloadTaskStatusChangedEvent>(
-                        message
-                    );
-                    if (@event != null)
-                    {
-                        await ProcessDownloadTaskStatusChangedEvent(@event, repository);
-                    }
+                    await ProcessDownloadTaskStatusChangedEvent(@event, repository);
                 }
             }
         }
@@ -158,3 +153,4 @@ namespace FastDown.Worker
         }
     }
 }
+
