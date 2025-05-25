@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:6.0
+    container_name: fastdown-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb-data:/data/db
+    environment:
+      - MONGO_INITDB_DATABASE=FastDownDB
+    networks:
+      - fastdown-network
+
+  rabbitmq:
+    image: rabbitmq:3.12-management
+    container_name: fastdown-rabbitmq
+    restart: unless-stopped
+    ports:
+      - "5672:5672"   # AMQP protocol port
+      - "15672:15672" # Management UI port
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    networks:
+      - fastdown-network
+
+networks:
+  fastdown-network:
+    driver: bridge
+
+volumes:
+  mongodb-data:
+  rabbitmq-data:
