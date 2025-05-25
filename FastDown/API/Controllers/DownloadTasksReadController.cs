@@ -28,5 +28,13 @@ namespace FastDown.API.Controllers
 
             return Ok(result);
         }
+
+        [HttpGet("status/{status}")]
+        public async Task<ActionResult<List<DownloadTaskReadModel>>> GetByStatus(string status)
+        {
+            var query = new GetDownloadTasksByStatusQuery { Status = status };
+            var result = await mediator.Send(query);
+            return Ok(result);
+        }
     }
 }

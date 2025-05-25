@@ -11,12 +11,11 @@ namespace FastDown.API.Controllers
     [Route("api/[controller]")]
     public class DownloadTasksController(IMediator mediator) : ControllerBase
     {
-        [HttpGet]
-        public async Task<ActionResult<List<DownloadTask>>> GetAll()
+        [HttpPost]
+        public async Task<ActionResult<int>> Create(CreateDownloadTaskCommand command)
         {
-            var query = new GetAllDownloadTasksQuery();
-            var result = await mediator.Send(query);
-            return Ok(result);
+            var id = await mediator.Send(command);
+            return CreatedAtAction(nameof(GetById), new { id }, id);
         }
 
         [HttpGet("{id}")]
@@ -29,13 +28,6 @@ namespace FastDown.API.Controllers
                 return NotFound();
 
             return Ok(result);
-        }
-
-        [HttpPost]
-        public async Task<ActionResult<int>> Create(CreateDownloadTaskCommand command)
-        {
-            var id = await mediator.Send(command);
-            return CreatedAtAction(nameof(GetById), new { id }, id);
         }
 
         [HttpPost("{id}/start")]
