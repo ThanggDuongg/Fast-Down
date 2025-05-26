@@ -29,18 +29,16 @@ namespace FastDown.Infrastructure.Services
         private readonly AsyncRetryPolicy _retryPolicy;
 
         public DownloadService(
-            HttpClient httpClient,
+            IHttpClientFactory httpClientFactory,
             FDContext context,
             IEventPublisher eventPublisher,
             ILogger<DownloadService> logger
         )
         {
-            _httpClient = httpClient;
+            _httpClient = httpClientFactory.CreateClient(Constants.HttpClients.DownloadClient);
             _context = context;
             _eventPublisher = eventPublisher;
             _logger = logger;
-
-            _httpClient.Timeout = TimeSpan.FromMinutes(30);
 
             _retryPolicy = Policy
                 .Handle<HttpRequestException>()
@@ -83,7 +81,7 @@ namespace FastDown.Infrastructure.Services
             {
                 _progressTracker[downloadTaskId] = (0, 0);
 
-                downloadTask.Status = "InProgress";
+                downloadTask.Status = Constants.DownloadTaskStatus.InProgress;
                 await _context.SaveChangesAsync(cancellationToken);
                 await PublishStatusChangedEvent(downloadTask, cancellationToken);
 
@@ -100,8 +98,9 @@ namespace FastDown.Infrastructure.Services
 
                 try
                 {
-                    (supportsRanges, fileSize) = await _retryPolicy.ExecuteAsync(
-                        async () => await GetFileInfoAsync(downloadTask.Url, cancellationToken)
+                    (supportsRanges, fileSize) = await GetFileInfoAsync(
+                        downloadTask.Url,
+                        cancellationToken
                     );
 
                     _progressTracker[downloadTaskId] = (0, fileSize);
@@ -157,7 +156,7 @@ namespace FastDown.Infrastructure.Services
                     }
                 }
 
-                downloadTask.Status = "Completed";
+                downloadTask.Status = Constants.DownloadTaskStatus.Completed;
                 await _context.SaveChangesAsync(cancellationToken);
                 await PublishStatusChangedEvent(downloadTask, cancellationToken);
 
@@ -173,7 +172,7 @@ namespace FastDown.Infrastructure.Services
             {
                 _logger.LogError(ex, "Error downloading file from {Url}", downloadTask.Url);
 
-                downloadTask.Status = "Failed";
+                downloadTask.Status = Constants.DownloadTaskStatus.Failed;
                 await _context.SaveChangesAsync(cancellationToken);
                 await PublishStatusChangedEvent(downloadTask, cancellationToken);
 
@@ -438,7 +437,7 @@ namespace FastDown.Infrastructure.Services
 
             await Task.WhenAll(tasks);
 
-            if (exceptions.Any())
+            if (!exceptions.IsEmpty)
             {
                 throw new AggregateException("One or more chunks failed to download", exceptions);
             }

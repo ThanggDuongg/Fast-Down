@@ -6,6 +6,8 @@ using FastDown.Infrastructure.Persistence.MongoDB;
 using FastDown.Infrastructure.Services;
 using FastDown.Worker;
 using Microsoft.EntityFrameworkCore;
+using Polly;
+using Polly.Retry;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -51,8 +53,45 @@ builder.Services.Configure<FastDown.Infrastructure.Messaging.RabbitMQSettings>(
 );
 builder.Services.AddSingleton<IEventPublisher, RabbitMQPublisher>();
 
-// Register HttpClient and DownloadService
-builder.Services.AddHttpClient<DownloadService>();
+// Configure HttpClientFactory with Polly policies
+builder.Services.AddHttpClient(
+    Constants.HttpClients.DownloadClient,
+    client =>
+    {
+        client.Timeout = TimeSpan.FromMinutes(30);
+    }
+);
+
+// Resilience pipeline for HTTP requests
+var httpResiliencePipeline = new ResiliencePipelineBuilder<HttpResponseMessage>()
+    .AddRetry(
+        new RetryStrategyOptions<HttpResponseMessage>
+        {
+            MaxRetryAttempts = 5,
+            BackoffType = DelayBackoffType.Exponential,
+            UseJitter = true,
+            Delay = TimeSpan.FromSeconds(1),
+            ShouldHandle = new PredicateBuilder<HttpResponseMessage>()
+                .Handle<HttpRequestException>()
+                .Handle<TimeoutException>()
+                .HandleResult(response =>
+                    (int)response.StatusCode >= 500
+                    || response.StatusCode == System.Net.HttpStatusCode.RequestTimeout
+                    || response.StatusCode == System.Net.HttpStatusCode.TooManyRequests
+                ),
+            OnRetry = args =>
+            {
+                Console.WriteLine(
+                    $"Error during HTTP request (attempt {args.AttemptNumber}/5). Retrying in {args.RetryDelay}..."
+                );
+                return ValueTask.CompletedTask;
+            },
+        }
+    )
+    .Build();
+builder.Services.AddSingleton(httpResiliencePipeline);
+
+// Register DownloadService
 builder.Services.AddScoped<DownloadService>();
 
 // Add RabbitMQ Consumer as a hosted service
