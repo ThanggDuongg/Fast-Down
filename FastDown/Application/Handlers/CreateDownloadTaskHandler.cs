@@ -6,7 +6,7 @@ using FastDown.Infrastructure.Persistence;
 
 namespace FastDown.Application.Handlers
 {
-    public class CreateDownloadTaskHandler(FDContext context, IEventPublisher eventPublisher)
+    public class CreateDownloadTaskHandler(FDContext context)
         : IHandler<CreateDownloadTaskCommand, int>
     {
         public async Task<int> HandleAsync(
@@ -29,20 +29,22 @@ namespace FastDown.Application.Handlers
                 CreatedAt = DateTime.UtcNow,
             };
 
+            // TODO: Fix use Guid instead of auto-generated Id
+            // Workaround temporary using SaveChanges here
             context.DownloadTasks.Add(downloadTask);
             await context.SaveChangesAsync(cancellationToken);
 
-            await eventPublisher.PublishAsync(
-                new DownloadTaskCreatedEvent
-                {
-                    Id = downloadTask.Id,
-                    Url = downloadTask.Url,
-                    FileName = downloadTask.FileName,
-                    Status = downloadTask.Status,
-                    CreatedAt = downloadTask.CreatedAt,
-                },
-                cancellationToken
-            );
+            var @event = new DownloadTaskCreatedEvent
+            {
+                Id = downloadTask.Id,
+                Url = downloadTask.Url,
+                FileName = downloadTask.FileName,
+                Status = downloadTask.Status,
+                CreatedAt = downloadTask.CreatedAt,
+            };
+
+            context.OutboxMessages.Add(OutboxMessage.Create(@event));
+            await context.SaveChangesAsync(cancellationToken);
 
             return downloadTask.Id;
         }

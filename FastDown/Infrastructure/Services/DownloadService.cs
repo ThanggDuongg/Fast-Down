@@ -340,7 +340,11 @@ namespace FastDown.Infrastructure.Services
         )
         {
             var chunks = CalculateChunks(fileSize, chunkCount);
-            _logger.LogInformation("Downloading file in {ChunkCount} chunks", chunks.Count);
+            _logger.LogInformation(
+                "Downloading file in {ChunkCount} chunks, total size: {TotalSize:N0} bytes",
+                chunks.Count,
+                fileSize
+            );
 
             using (var fs = new FileStream(filePath, FileMode.Create, FileAccess.Write))
             {
@@ -358,6 +362,11 @@ namespace FastDown.Infrastructure.Services
                 Math.Min(Environment.ProcessorCount, chunks.Count)
             );
 
+            _logger.LogInformation(
+                "Using {MaxConcurrentChunks} concurrent download threads",
+                maxConcurrentChunks
+            );
+
             using var semaphore = new SemaphoreSlim(maxConcurrentChunks);
 
             foreach (var chunk in chunks)
@@ -369,6 +378,12 @@ namespace FastDown.Infrastructure.Services
                             try
                             {
                                 await semaphore.WaitAsync(cancellationToken);
+                                _logger.LogDebug(
+                                    "Starting chunk {Start}-{End} ({Size:N0} bytes)",
+                                    chunk.Start,
+                                    chunk.End,
+                                    chunk.End - chunk.Start + 1
+                                );
 
                                 try
                                 {
@@ -384,6 +399,13 @@ namespace FastDown.Infrastructure.Services
                                     );
 
                                     completedChunks.Add(chunk);
+                                    _logger.LogDebug(
+                                        "Completed chunk {Start}-{End}, {CompletedCount}/{TotalCount} chunks done",
+                                        chunk.Start,
+                                        chunk.End,
+                                        completedChunks.Count,
+                                        chunks.Count
+                                    );
 
                                     lock (progressLock)
                                     {
@@ -437,6 +459,13 @@ namespace FastDown.Infrastructure.Services
 
             await Task.WhenAll(tasks);
 
+            _logger.LogInformation(
+                "All chunks completed: {CompletedCount}/{TotalCount}, with {ErrorCount} errors",
+                completedChunks.Count,
+                chunks.Count,
+                exceptions.Count
+            );
+
             if (!exceptions.IsEmpty)
             {
                 throw new AggregateException("One or more chunks failed to download", exceptions);
@@ -451,6 +480,13 @@ namespace FastDown.Infrastructure.Services
             CancellationToken cancellationToken
         )
         {
+            _logger.LogDebug(
+                "Starting download of chunk {Start}-{End} ({Size} bytes)",
+                start,
+                end,
+                end - start + 1
+            );
+
             using var request = new HttpRequestMessage(HttpMethod.Get, url);
             request.Headers.Range = new RangeHeaderValue(start, end);
 
@@ -478,6 +514,7 @@ namespace FastDown.Infrastructure.Services
             int bytesRead;
             long totalBytesRead = 0;
             long expectedBytes = end - start + 1;
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
 
             while (
                 (
@@ -501,11 +538,16 @@ namespace FastDown.Infrastructure.Services
                     break;
             }
 
+            stopwatch.Stop();
+            var transferRate = totalBytesRead / (stopwatch.ElapsedMilliseconds / 1000.0) / 1024.0;
+
             _logger.LogDebug(
-                "Chunk {Start}-{End} downloaded successfully ({BytesRead} bytes)",
+                "Chunk {Start}-{End} downloaded successfully ({BytesRead}/{ExpectedBytes} bytes, {TransferRate:F2} KB/s)",
                 start,
                 end,
-                totalBytesRead
+                totalBytesRead,
+                expectedBytes,
+                transferRate
             );
 
             if (totalBytesRead < expectedBytes)
