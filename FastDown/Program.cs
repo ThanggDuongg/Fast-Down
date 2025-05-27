@@ -97,6 +97,8 @@ builder.Services.AddScoped<DownloadService>();
 // Add RabbitMQ Consumer as a hosted service
 builder.Services.AddHostedService<RabbitMQConsumerService>();
 
+builder.Services.AddHostedService<OutboxPublisher>();
+
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();

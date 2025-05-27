@@ -1,5 +1,6 @@
 using FastDown.Domain.ReadModels;
 using Microsoft.Extensions.Options;
+using MongoDB.Bson;
 using MongoDB.Driver;
 
 namespace FastDown.Infrastructure.Persistence.MongoDB
@@ -29,9 +30,30 @@ namespace FastDown.Infrastructure.Persistence.MongoDB
             CancellationToken cancellationToken = default
         )
         {
-            return await _collection
-                .Find(x => x.OriginalId == originalId)
-                .FirstOrDefaultAsync(cancellationToken);
+            try
+            {
+                var filter = Builders<DownloadTaskReadModel>.Filter.Eq(
+                    x => x.OriginalId,
+                    originalId
+                );
+                var result = await _collection.Find(filter).FirstOrDefaultAsync(cancellationToken);
+
+                if (result == null)
+                {
+                    Console.WriteLine(
+                        $"Document with OriginalId={originalId} not found in MongoDB"
+                    );
+                }
+
+                return result!;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(
+                    $"Error retrieving document with OriginalId={originalId}: {ex.Message}"
+                );
+                throw;
+            }
         }
 
         public async Task<List<DownloadTaskReadModel>> GetByStatusAsync(
@@ -50,12 +72,45 @@ namespace FastDown.Infrastructure.Persistence.MongoDB
             CancellationToken cancellationToken = default
         )
         {
-            var filter = Builders<DownloadTaskReadModel>.Filter.Eq(
-                x => x.OriginalId,
-                task.OriginalId
-            );
-            var options = new ReplaceOptions { IsUpsert = true };
-            await _collection.ReplaceOneAsync(filter, task, options, cancellationToken);
+            try
+            {
+                var filter = Builders<DownloadTaskReadModel>.Filter.Eq(
+                    x => x.OriginalId,
+                    task.OriginalId
+                );
+
+                var existingDocument = await _collection
+                    .Find(filter)
+                    .FirstOrDefaultAsync(cancellationToken);
+
+                if (existingDocument != null)
+                {
+                    task.Id = existingDocument.Id ?? ObjectId.GenerateNewId().ToString();
+
+                    await _collection.ReplaceOneAsync(
+                        filter,
+                        task,
+                        new ReplaceOptions { IsUpsert = false },
+                        cancellationToken
+                    );
+                }
+                else
+                {
+                    if (string.IsNullOrEmpty(task.Id))
+                    {
+                        task.Id = ObjectId.GenerateNewId().ToString();
+                    }
+
+                    await _collection.InsertOneAsync(task, null, cancellationToken);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(
+                    $"Error upserting document with OriginalId={task.OriginalId}: {ex.Message}"
+                );
+                throw;
+            }
         }
     }
 }

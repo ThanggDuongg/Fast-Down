@@ -95,29 +95,58 @@ namespace FastDown.Worker
             using var scope = _serviceProvider.CreateScope();
             var repository = scope.ServiceProvider.GetRequiredService<DownloadTaskReadRepository>();
 
-            if (routingKey == nameof(DownloadTaskCreatedEvent))
+            try
             {
-                var @event = JsonSerializer.Deserialize<DownloadTaskCreatedEvent>(message);
-                if (@event != null)
+                if (routingKey == nameof(DownloadTaskCreatedEvent))
                 {
-                    await ProcessDownloadTaskCreatedEvent(@event, repository);
+                    var @event = JsonSerializer.Deserialize<DownloadTaskCreatedEvent>(message);
+                    if (@event != null)
+                    {
+                        await ProcessDownloadTaskCreatedEvent(@event, repository);
+                        _logger.LogInformation(
+                            "Successfully processed DownloadTaskCreatedEvent for ID: {Id}",
+                            @event.Id
+                        );
+                    }
+                }
+                else if (routingKey == nameof(DownloadTaskStatusChangedEvent))
+                {
+                    var @event = JsonSerializer.Deserialize<DownloadTaskStatusChangedEvent>(
+                        message
+                    );
+                    if (@event != null)
+                    {
+                        await ProcessDownloadTaskStatusChangedEvent(@event, repository);
+                        _logger.LogInformation(
+                            "Successfully processed DownloadTaskStatusChangedEvent for ID: {Id}",
+                            @event.Id
+                        );
+                    }
+                }
+                else if (routingKey == nameof(DownloadTaskProgressEvent))
+                {
+                    var @event = JsonSerializer.Deserialize<DownloadTaskProgressEvent>(message);
+                    if (@event != null)
+                    {
+                        await ProcessDownloadTaskProgressEvent(@event, repository);
+                        _logger.LogInformation(
+                            "Successfully processed DownloadTaskProgressEvent for ID: {Id}",
+                            @event.Id
+                        );
+                    }
+                }
+                else
+                {
+                    _logger.LogWarning("Unknown routing key: {RoutingKey}", routingKey);
                 }
             }
-            else if (routingKey == nameof(DownloadTaskStatusChangedEvent))
+            catch (Exception ex)
             {
-                var @event = JsonSerializer.Deserialize<DownloadTaskStatusChangedEvent>(message);
-                if (@event != null)
-                {
-                    await ProcessDownloadTaskStatusChangedEvent(@event, repository);
-                }
-            }
-            else if (routingKey == nameof(DownloadTaskProgressEvent))
-            {
-                var @event = JsonSerializer.Deserialize<DownloadTaskProgressEvent>(message);
-                if (@event != null)
-                {
-                    await ProcessDownloadTaskProgressEvent(@event, repository);
-                }
+                _logger.LogError(
+                    ex,
+                    "Error processing message with routing key {RoutingKey}",
+                    routingKey
+                );
             }
         }
 
